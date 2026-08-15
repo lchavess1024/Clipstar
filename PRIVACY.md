@@ -19,7 +19,7 @@ Saved clips and folders are stored in `chrome.storage.local`, inside your Chrome
 
 Clipstar uses saved content only to display, organize, copy, import, export, and insert your clips. Focused field information is processed transiently during the user-requested insertion and is not added to Clipstar storage.
 
-Data remains until you delete individual items, clear the extension's storage, remove the extension, or remove its Chrome profile. When upgrading from Luis Clippings, Clipstar copies valid legacy data into its current store and removes the verified legacy keys.
+Data remains until you delete individual items, clear the extension's storage, remove the extension, or remove its Chrome profile. When no current Clipstar store exists, Clipstar migrates the first valid Luis Clippings data source it finds and removes that migrated source key only after the new store is saved. Other legacy keys, if present, remain in Chrome extension storage until you clear the extension's storage or remove the extension.
 
 Exported backups are files you control. Their retention and sharing depend on where you save them.
 

@@ -10,6 +10,11 @@ All notable changes to Clipstar are documented here.
 - Exact cross-folder placement instead of always relying on a clip's previous position.
 - Up and down arrow-key ordering from each clip's drag handle.
 - Persistent folder-local position normalization so popup and right-click menu order stay in sync.
+- A combined local-privacy card in Settings linking to Clipstar’s source and the developer’s GitHub profile.
+
+### Changed
+
+- Clarified legacy-data retention in the privacy policy.
 
 ## [1.1.0] - 2026-08-14
 
@@ -26,7 +31,7 @@ All notable changes to Clipstar are documented here.
 - Centralized storage normalization and migrations.
 - Routed all popup changes through a serialized service-worker mutation queue.
 - Restricted Chrome local storage to trusted extension contexts.
-- Migrated valid `luis_*` storage data to `clipstar_store_v1` and removed stale legacy keys.
+- Migrated the first valid `luis_*` storage source to `clipstar_store_v1` and removed that source key after a verified write.
 
 ### Fixed
 

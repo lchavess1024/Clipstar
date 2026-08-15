@@ -9,6 +9,10 @@ const manifestPath = path.join(extensionRoot, "manifest.json");
 const packagePath = path.join(root, "package.json");
 const errors = [];
 const requiredPermissions = ["activeTab", "clipboardWrite", "contextMenus", "scripting", "storage"];
+const allowedRuntimeUrls = new Set([
+  "https://github.com/lchavess1024",
+  "https://github.com/lchavess1024/Clipstar"
+]);
 
 const manifest = await readJson(manifestPath, "manifest.json");
 const packageJson = await readJson(packagePath, "package.json");
@@ -81,8 +85,10 @@ for (const filePath of runtimeFiles) {
     if (/\beval\s*\(|\bnew\s+Function\s*\(/.test(source)) {
       errors.push(`${relativePath}: contains dynamic code evaluation`);
     }
-    if (/https?:\/\//i.test(source)) {
-      errors.push(`${relativePath}: runtime source contains a remote URL`);
+    for (const match of source.matchAll(/https?:\/\/[^"'<>\s)]+/gi)) {
+      if (!allowedRuntimeUrls.has(match[0])) {
+        errors.push(`${relativePath}: runtime source contains an unapproved remote URL`);
+      }
     }
   }
 }
@@ -95,6 +101,14 @@ for (const match of popupJs.matchAll(/byId\("([^"]+)"\)/g)) {
 for (const match of popupHtml.matchAll(/(?:src|href)="([^"#]+)"/g)) {
   if (!/^(?:https?:|data:)/.test(match[1])) await checkFile(match[1]);
 }
+check(
+  popupHtml.includes('href="https://github.com/lchavess1024/Clipstar"'),
+  "popup.html must link the privacy concern text to the Clipstar GitHub repository"
+);
+check(
+  popupHtml.includes('href="https://github.com/lchavess1024"'),
+  "popup.html must link the GitHub icon to the developer's profile"
+);
 
 if (errors.length) {
   console.error(`Validation failed with ${errors.length} ${errors.length === 1 ? "error" : "errors"}:`);

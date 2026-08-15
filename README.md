@@ -54,7 +54,7 @@ Open this repository as a folder. The included tasks expose **Validate**, **Test
 
 - The popup never writes the full data store directly. It sends typed mutations to the service worker.
 - The service worker serializes every mutation against the latest store revision, validates the result, and then writes it.
-- Existing `luis_*` data is migrated once to `clipstar_store_v1`; verified legacy copies are removed after migration.
+- When no current store exists, the first valid `luis_*` source is migrated to `clipstar_store_v1` and that migrated source key is removed after a verified write.
 - Chrome local storage is restricted to trusted extension contexts.
 - Page insertion runs only after a context-menu gesture and only in the frame Chrome identifies for that action.
 - The packaged extension contains all executable code and performs no network requests.
