@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Clipstar in Chrome",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "https://example.com",
+      "userDataDir": "${workspaceFolder}/.chrome-profile",
+      "runtimeArgs": [
+        "--disable-extensions-except=${workspaceFolder}/extension",
+        "--load-extension=${workspaceFolder}/extension"
+      ]
+    }
+  ]
+}

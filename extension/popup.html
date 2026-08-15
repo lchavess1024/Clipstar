@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Clipstar</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <div id="appShell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="icons/icon48.png" alt="" width="42" height="42">
+          <div>
+            <h1>Clipstar</h1>
+            <p>Reusable text, ready when you need it.</p>
+          </div>
+        </div>
+        <button id="settingsBtn" class="icon-btn settings-main" type="button" aria-label="Open settings" title="Settings">
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </header>
+
+      <section class="notice" aria-label="How to insert clips">
+        Right-click inside a text field, then choose <strong>Clipstar</strong> and a clip.
+        Page access is granted only for that action.
+      </section>
+
+      <section class="toolbar split" aria-label="Create">
+        <button id="newEntryBtn" class="primary" type="button">New clip</button>
+        <button id="newFolderBtn" class="secondary" type="button">New folder</button>
+      </section>
+
+      <section class="toolbar search-wrap">
+        <label class="sr-only" for="searchInput">Search clips</label>
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input id="searchInput" type="search" placeholder="Search clips, folders, or text" autocomplete="off">
+      </section>
+
+      <div class="status-line">
+        <span id="stats">Loading…</span>
+        <span>Drag clips to move them</span>
+      </div>
+      <main id="treeView" class="tree-view" aria-label="Saved clips"></main>
+    </div>
+
+    <section id="editor" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="editorTitle" aria-hidden="true" tabindex="-1">
+      <div class="modal-header">
+        <h2 id="editorTitle">New clip</h2>
+        <button id="closeEditorBtn" class="icon-btn" type="button" aria-label="Close clip editor">×</button>
+      </div>
+      <label>
+        Label
+        <input id="titleInput" type="text" maxlength="120" placeholder="Example: Follow-up response" autocomplete="off">
+      </label>
+      <label>
+        Folder
+        <select id="folderSelect"></select>
+      </label>
+      <label class="grow">
+        Clip body
+        <textarea id="bodyInput" maxlength="100000" spellcheck="true" placeholder="Write the reusable text here. Spacing and line breaks are preserved."></textarea>
+      </label>
+      <div class="modal-actions">
+        <button id="deleteEntryBtn" class="danger hidden" type="button">Delete clip</button>
+        <span class="spacer"></span>
+        <button id="saveEntryBtn" class="primary" type="button">Save clip</button>
+      </div>
+    </section>
+
+    <section id="folderEditor" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="folderEditorTitle" aria-hidden="true" tabindex="-1">
+      <div class="modal-header">
+        <h2 id="folderEditorTitle">New folder</h2>
+        <button id="closeFolderEditorBtn" class="icon-btn" type="button" aria-label="Close folder editor">×</button>
+      </div>
+      <label>
+        Folder name
+        <input id="folderNameInput" type="text" maxlength="80" placeholder="Example: Customer replies" autocomplete="off">
+      </label>
+      <label>
+        Location
+        <select id="folderParentSelect"></select>
+      </label>
+      <p class="muted">Clipstar supports one subfolder level so the right-click menu stays quick to scan.</p>
+      <div class="modal-actions push-bottom">
+        <button id="deleteFolderBtn" class="danger hidden" type="button">Delete folder</button>
+        <span class="spacer"></span>
+        <button id="saveFolderBtn" class="primary" type="button">Save folder</button>
+      </div>
+    </section>
+
+    <section id="settingsPanel" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true" tabindex="-1">
+      <div class="modal-header">
+        <h2 id="settingsTitle">Settings</h2>
+        <button id="closeSettingsBtn" class="icon-btn" type="button" aria-label="Close settings">×</button>
+      </div>
+      <div class="settings-card">
+        <h3>Backup and restore</h3>
+        <p>Exports contain the full text of your clips. Imports are merged with what you already have.</p>
+        <div class="settings-actions">
+          <button id="exportBtn" class="secondary" type="button">Export JSON backup</button>
+          <label class="secondary file-button">
+            <span>Import JSON backup</span>
+            <input id="importInput" type="file" accept=".json,application/json">
+          </label>
+        </div>
+      </div>
+      <div class="settings-card privacy-card">
+        <h3>Local by design</h3>
+        <p>
+          No account, telemetry, analytics, or external server. Clips are stored in Chrome on this device.
+          Clipstar receives temporary page access only after you choose it from a text field’s right-click menu.
+        </p>
+      </div>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
