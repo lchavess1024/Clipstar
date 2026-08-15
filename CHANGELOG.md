@@ -2,6 +2,15 @@
 
 All notable changes to Clipstar are documented here.
 
+## [1.2.0] - 2026-08-14
+
+### Added
+
+- Drag handles for placing clips before or after one another within Standalone, folders, and subfolders.
+- Exact cross-folder placement instead of always relying on a clip's previous position.
+- Up and down arrow-key ordering from each clip's drag handle.
+- Persistent folder-local position normalization so popup and right-click menu order stay in sync.
+
 ## [1.1.0] - 2026-08-14
 
 ### Added

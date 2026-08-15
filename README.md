@@ -19,7 +19,8 @@ This release turns the former Luis Clippings prototype into a production-oriente
 
 - Create, edit, copy, search, organize, import, and export reusable clips.
 - Use root folders and one level of subfolders.
-- Drag clips between folders or back to Standalone.
+- Drag clips before or after one another to set their exact order, including across folders or back to Standalone.
+- Reorder a focused clip with the up and down arrow keys when dragging is not convenient.
 - Insert clips into standard inputs, textareas, contenteditable fields, and supported ServiceNow journal fields.
 - Keep all saved content in Chrome's local extension storage—no account, server, analytics, telemetry, or remote code.
 
@@ -35,6 +36,7 @@ Chrome blocks extensions on internal pages such as `chrome://settings`. File URL
 ## Development
 
 Clipstar has no runtime or development dependencies. Node.js 20 or newer is used only for validation, tests, icon generation, and packaging.
+The unpacked `extension` folder can be loaded directly in Chrome without running a build first.
 
 ```bash
 npm run check

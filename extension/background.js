@@ -279,7 +279,9 @@ function sortByPositionThenName(a, b) {
 }
 
 function sortByPositionThenTitle(a, b) {
-  return sortByPosition(a, b) || String(a.title || "").localeCompare(String(b.title || ""));
+  return sortByPosition(a, b)
+    || String(a.title || "").localeCompare(String(b.title || ""))
+    || String(a.id || "").localeCompare(String(b.id || ""));
 }
 
 function sortByPosition(a, b) {

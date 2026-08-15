@@ -120,6 +120,164 @@ test("serial mutations preserve both writers' changes", () => {
   assert.equal(second.revision, 2);
 });
 
+test("moveSnippet reorders clips before and after a target in the same folder", () => {
+  const initial = cleanStore({
+    folders: [{ id: "folder", name: "Folder", parentId: "" }],
+    snippets: [
+      { id: "alpha", title: "Alpha", body: "A", folderId: "folder", position: 0 },
+      { id: "bravo", title: "Bravo", body: "B", folderId: "folder", position: 1 },
+      { id: "charlie", title: "Charlie", body: "C", folderId: "folder", position: 2 }
+    ]
+  });
+
+  const movedBefore = applyMutation(
+    initial,
+    {
+      kind: "moveSnippet",
+      payload: { id: "charlie", folderId: "folder", targetId: "alpha", placement: "before" }
+    },
+    { now: "2026-08-14T00:00:00.000Z" }
+  );
+
+  assert.deepEqual(snippetIdsInFolder(movedBefore, "folder"), ["charlie", "alpha", "bravo"]);
+  assert.deepEqual(snippetPositionsInFolder(movedBefore, "folder"), [0, 1, 2]);
+  assert.equal(movedBefore.revision, initial.revision + 1);
+
+  const movedAfter = applyMutation(
+    movedBefore,
+    {
+      kind: "moveSnippet",
+      payload: { id: "charlie", folderId: "folder", targetId: "bravo", placement: "after" }
+    },
+    { now: "2026-08-14T00:00:01.000Z" }
+  );
+  const reloaded = cleanStore(JSON.parse(JSON.stringify(movedAfter)));
+
+  assert.deepEqual(snippetIdsInFolder(reloaded, "folder"), ["alpha", "bravo", "charlie"]);
+  assert.deepEqual(snippetPositionsInFolder(reloaded, "folder"), [0, 1, 2]);
+  assert.equal(reloaded.revision, initial.revision + 2);
+});
+
+test("moveSnippet places a clip exactly across folders and compacts both sibling groups", () => {
+  const initial = cleanStore({
+    folders: [
+      { id: "source", name: "Source", parentId: "" },
+      { id: "destination", name: "Destination", parentId: "" }
+    ],
+    snippets: [
+      { id: "source-a", title: "Source A", body: "A", folderId: "source", position: 0 },
+      { id: "source-b", title: "Source B", body: "B", folderId: "source", position: 1 },
+      { id: "source-c", title: "Source C", body: "C", folderId: "source", position: 2 },
+      { id: "destination-a", title: "Destination A", body: "D", folderId: "destination", position: 0 },
+      { id: "destination-b", title: "Destination B", body: "E", folderId: "destination", position: 1 }
+    ]
+  });
+
+  const inserted = applyMutation(
+    initial,
+    {
+      kind: "moveSnippet",
+      payload: {
+        id: "source-b",
+        folderId: "destination",
+        targetId: "destination-b",
+        placement: "before"
+      }
+    },
+    { now: "2026-08-14T00:00:00.000Z" }
+  );
+
+  assert.deepEqual(snippetIdsInFolder(inserted, "source"), ["source-a", "source-c"]);
+  assert.deepEqual(snippetPositionsInFolder(inserted, "source"), [0, 1]);
+  assert.deepEqual(
+    snippetIdsInFolder(inserted, "destination"),
+    ["destination-a", "source-b", "destination-b"]
+  );
+  assert.deepEqual(snippetPositionsInFolder(inserted, "destination"), [0, 1, 2]);
+  assert.equal(inserted.snippets.find((snippet) => snippet.id === "source-b").folderId, "destination");
+
+  const appended = applyMutation(
+    inserted,
+    {
+      kind: "moveSnippet",
+      payload: { id: "source-a", folderId: "destination", targetId: "" }
+    },
+    { now: "2026-08-14T00:00:01.000Z" }
+  );
+
+  assert.deepEqual(snippetIdsInFolder(appended, "source"), ["source-c"]);
+  assert.deepEqual(
+    snippetIdsInFolder(appended, "destination"),
+    ["destination-a", "source-b", "destination-b", "source-a"]
+  );
+  assert.deepEqual(snippetPositionsInFolder(appended, "destination"), [0, 1, 2, 3]);
+});
+
+test("moveSnippet rejects a missing target or a target outside the destination folder", () => {
+  const initial = cleanStore({
+    folders: [
+      { id: "source", name: "Source", parentId: "" },
+      { id: "destination", name: "Destination", parentId: "" }
+    ],
+    snippets: [
+      { id: "moving", title: "Moving", body: "A", folderId: "source", position: 0 },
+      { id: "source-target", title: "Source target", body: "B", folderId: "source", position: 1 },
+      { id: "destination-target", title: "Destination target", body: "C", folderId: "destination", position: 0 }
+    ]
+  });
+
+  assert.throws(
+    () => applyMutation(initial, {
+      kind: "moveSnippet",
+      payload: { id: "moving", folderId: "destination", targetId: "missing", placement: "before" }
+    }),
+    StoreError
+  );
+  assert.throws(
+    () => applyMutation(initial, {
+      kind: "moveSnippet",
+      payload: { id: "moving", folderId: "destination", targetId: "source-target", placement: "after" }
+    }),
+    StoreError
+  );
+  assert.deepEqual(snippetIdsInFolder(initial, "source"), ["moving", "source-target"]);
+  assert.deepEqual(snippetIdsInFolder(initial, "destination"), ["destination-target"]);
+});
+
+test("new clips and editor moves append using folder-local positions", () => {
+  const initial = cleanStore({
+    folders: [{ id: "folder", name: "Folder", parentId: "" }],
+    snippets: [
+      { id: "folder-clip", title: "Folder clip", body: "A", folderId: "folder", position: 4 },
+      { id: "standalone", title: "Standalone", body: "B", folderId: "", position: 99 }
+    ]
+  });
+
+  const created = applyMutation(
+    initial,
+    {
+      kind: "upsertSnippet",
+      payload: { title: "New folder clip", body: "C", folderId: "folder" }
+    },
+    { idFactory: sequence("new-folder-clip"), now: "2026-08-14T00:00:00.000Z" }
+  );
+  assert.equal(created.snippets.find((snippet) => snippet.id === "new-folder-clip").position, 5);
+
+  const movedWithEditor = applyMutation(
+    created,
+    {
+      kind: "upsertSnippet",
+      payload: { id: "standalone", title: "Standalone", body: "B", folderId: "folder" }
+    },
+    { now: "2026-08-14T00:00:01.000Z" }
+  );
+  assert.equal(movedWithEditor.snippets.find((snippet) => snippet.id === "standalone").position, 6);
+  assert.deepEqual(
+    snippetIdsInFolder(movedWithEditor, "folder"),
+    ["folder-clip", "new-folder-clip", "standalone"]
+  );
+});
+
 test("folder deletion moves affected clips to standalone", () => {
   const initial = cleanStore({
     folders: [
@@ -195,4 +353,18 @@ test("a maximum-size valid store still fits the raw import-file allowance", () =
 function sequence(...values) {
   let index = 0;
   return () => values[index++] || `generated-${index}`;
+}
+
+function snippetsInFolder(store, folderId) {
+  return store.snippets
+    .filter((snippet) => snippet.folderId === folderId)
+    .sort((a, b) => a.position - b.position || a.title.localeCompare(b.title));
+}
+
+function snippetIdsInFolder(store, folderId) {
+  return snippetsInFolder(store, folderId).map((snippet) => snippet.id);
+}
+
+function snippetPositionsInFolder(store, folderId) {
+  return snippetsInFolder(store, folderId).map((snippet) => snippet.position);
 }

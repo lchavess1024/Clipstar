@@ -35,6 +35,8 @@ Snippet { id, title, folderId, body, position, createdAt, updatedAt }
 
 Normalization enforces unique safe IDs, valid references, one subfolder level, bounded counts and strings, valid timestamps, and an 8 MB serialized budget. Cycles are detached to the root; deeper trees are flattened to their root ancestor.
 
+Clip positions are local to their folder (with an empty folder ID representing Standalone). A drag mutation identifies an optional target clip and a before/after placement, then densely renumbers only the affected source and destination lists. The same persisted positions drive both the popup and Chrome's right-click menus.
+
 ## Insertion security boundary
 
 Clipstar requests no host patterns and registers no persistent content scripts. Selecting its context-menu item activates Chrome's temporary `activeTab` grant. The service worker executes packaged, reviewable functions in the exact frame reported by Chrome.

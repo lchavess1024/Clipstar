@@ -10,6 +10,7 @@ let selectedFolderId = "";
 let activeDialog = null;
 let returnFocus = null;
 let busy = false;
+let draggedEntryId = "";
 
 const byId = (id) => document.getElementById(id);
 const els = {
@@ -272,14 +273,50 @@ function folderTitleButton(folder) {
 function renderEntry(snippet) {
   const item = document.createElement("article");
   item.className = "entry-card";
-  item.draggable = true;
   item.dataset.entryId = snippet.id;
-  item.addEventListener("dragstart", (event) => {
-    event.dataTransfer.setData("application/x-clipstar-id", snippet.id);
-    event.dataTransfer.effectAllowed = "move";
-    item.classList.add("is-dragging");
+  item.dataset.folderId = snippet.folderId;
+
+  const dragHandle = document.createElement("button");
+  dragHandle.className = "drag-handle";
+  dragHandle.type = "button";
+  dragHandle.draggable = true;
+  dragHandle.textContent = "⋮⋮";
+  dragHandle.setAttribute("aria-label", `Reorder ${snippet.title}`);
+  dragHandle.setAttribute("aria-describedby", "reorderInstructions");
+  dragHandle.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown");
+  dragHandle.title = `Drag to move ${snippet.title}, or use the arrow keys to reorder it`;
+  dragHandle.addEventListener("dragstart", (event) => startEntryDrag(event, item, snippet.id));
+  dragHandle.addEventListener("dragend", clearDragState);
+  dragHandle.addEventListener("keydown", (event) => handleEntryOrderKeydown(event, snippet));
+
+  item.addEventListener("dragover", (event) => {
+    if (!isEntryDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = getDraggedEntryId(event);
+    clearDropIndicators();
+    if (!id || id === snippet.id) return;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    item.classList.add(dropPlacement(event, item) === "before" ? "drop-before" : "drop-after");
   });
-  item.addEventListener("dragend", () => item.classList.remove("is-dragging"));
+  item.addEventListener("dragleave", (event) => {
+    if (!item.contains(event.relatedTarget)) item.classList.remove("drop-before", "drop-after");
+  });
+  item.addEventListener("drop", async (event) => {
+    if (!isEntryDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = getDraggedEntryId(event);
+    const placement = dropPlacement(event, item);
+    clearDragState();
+    if (!id || id === snippet.id) return;
+    await commitMutation("moveSnippet", {
+      id,
+      folderId: snippet.folderId,
+      targetId: snippet.id,
+      placement
+    });
+  });
 
   const main = document.createElement("div");
   main.className = "entry-main";
@@ -297,31 +334,112 @@ function renderEntry(snippet) {
     smallButton("Copy", `Copy ${snippet.title}`, () => copyToClipboard(snippet.body), false, "primary"),
     smallButton("✎", `Edit clip ${snippet.title}`, () => openEntryEditor(snippet), true)
   );
-  item.append(main, actions);
+  item.append(dragHandle, main, actions);
   return item;
 }
 
 function addDropHandlersToZones() {
   for (const zone of els.treeView.querySelectorAll(".drop-zone")) {
     zone.addEventListener("dragover", (event) => {
-      if (!Array.from(event.dataTransfer.types).includes("application/x-clipstar-id")) return;
+      if (!isEntryDrag(event) || event.target.closest(".entry-card")) return;
+      if (event.target.closest(".drop-zone") !== zone) return;
       event.preventDefault();
+      event.stopPropagation();
+      clearDropIndicators();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
       zone.classList.add("drag-over");
     });
     zone.addEventListener("dragleave", (event) => {
       if (!zone.contains(event.relatedTarget)) zone.classList.remove("drag-over");
     });
     zone.addEventListener("drop", async (event) => {
-      const id = event.dataTransfer.getData("application/x-clipstar-id");
+      if (!isEntryDrag(event) || event.target.closest(".entry-card")) return;
+      if (event.target.closest(".drop-zone") !== zone) return;
+      const id = getDraggedEntryId(event);
       if (!id) return;
       event.preventDefault();
       event.stopPropagation();
-      zone.classList.remove("drag-over");
       const folderId = zone.dataset.folderId || "";
+      clearDragState();
       const updated = await commitMutation("moveSnippet", { id, folderId });
-      if (updated) showToast(folderId ? `Moved to ${getFolderPath(folderId)}.` : "Moved to standalone.");
+      if (updated) {
+        showToast(folderId ? `Moved to the end of ${getFolderPath(folderId)}.` : "Moved to the end of Standalone.");
+      }
     });
   }
+}
+
+function startEntryDrag(event, item, id) {
+  if (!event.dataTransfer) return;
+  draggedEntryId = id;
+  event.dataTransfer.setData("application/x-clipstar-id", id);
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setDragImage(item, 18, 18);
+  item.classList.add("is-dragging");
+  document.body.classList.add("is-reordering");
+}
+
+function isEntryDrag(event) {
+  return Boolean(
+    draggedEntryId
+    || Array.from(event.dataTransfer?.types || []).includes("application/x-clipstar-id")
+  );
+}
+
+function getDraggedEntryId(event) {
+  return event.dataTransfer?.getData("application/x-clipstar-id") || draggedEntryId;
+}
+
+function dropPlacement(event, item) {
+  const bounds = item.getBoundingClientRect();
+  return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+}
+
+function clearDropIndicators() {
+  for (const element of els.treeView.querySelectorAll(".drop-before, .drop-after, .drag-over")) {
+    element.classList.remove("drop-before", "drop-after", "drag-over");
+  }
+}
+
+function clearDragState() {
+  clearDropIndicators();
+  for (const element of els.treeView.querySelectorAll(".is-dragging")) {
+    element.classList.remove("is-dragging");
+  }
+  document.body.classList.remove("is-reordering");
+  draggedEntryId = "";
+}
+
+async function handleEntryOrderKeydown(event, snippet) {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  event.preventDefault();
+  event.stopPropagation();
+  const siblings = store.snippets
+    .filter((item) => item.folderId === snippet.folderId)
+    .sort(sortEntries);
+  const currentIndex = siblings.findIndex((item) => item.id === snippet.id);
+  const direction = event.key === "ArrowUp" ? -1 : 1;
+  const target = siblings[currentIndex + direction];
+  if (!target) {
+    showToast(direction < 0 ? "This clip is already first." : "This clip is already last.");
+    return;
+  }
+
+  const updated = await commitMutation("moveSnippet", {
+    id: snippet.id,
+    folderId: snippet.folderId,
+    targetId: target.id,
+    placement: direction < 0 ? "before" : "after"
+  });
+  if (!updated) return;
+  focusEntryHandle(snippet.id);
+  showToast(`Moved ${direction < 0 ? "up" : "down"}.`);
+}
+
+function focusEntryHandle(id) {
+  const item = Array.from(els.treeView.querySelectorAll(".entry-card"))
+    .find((entry) => entry.dataset.entryId === id);
+  item?.querySelector(".drag-handle")?.focus();
 }
 
 function openEntryEditor(snippet = null, folderId = selectedFolderId) {
@@ -619,7 +737,9 @@ function sortFolders(a, b) {
 }
 
 function sortEntries(a, b) {
-  return sortByPosition(a, b) || String(a.title || "").localeCompare(String(b.title || ""));
+  return sortByPosition(a, b)
+    || String(a.title || "").localeCompare(String(b.title || ""))
+    || String(a.id || "").localeCompare(String(b.id || ""));
 }
 
 function sortByPosition(a, b) {

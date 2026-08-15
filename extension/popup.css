@@ -160,10 +160,26 @@ p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .folder-actions, .entry-actions { align-items: center; justify-content: flex-end; gap: 5px; }
 .folder-entries { display: grid; gap: 6px; }
-.entry-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; margin: 5px 0; padding: 9px 10px; }
-.entry-card[draggable="true"] { cursor: grab; }
+.entry-card { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; margin: 5px 0; padding: 9px 10px; }
 .entry-card.is-dragging { opacity: .52; }
 .drag-over { border-color: var(--success) !important; box-shadow: 0 0 0 3px rgba(134, 239, 172, .14); }
+.entry-card.drop-before { box-shadow: inset 0 3px 0 var(--success); }
+.entry-card.drop-after { box-shadow: inset 0 -3px 0 var(--success); }
+.drag-handle {
+  width: 25px;
+  min-height: 34px;
+  padding: 0;
+  color: var(--muted);
+  border-color: transparent;
+  background: transparent;
+  cursor: grab;
+  font-size: 15px;
+  letter-spacing: -5px;
+  touch-action: none;
+}
+.drag-handle:hover:not(:disabled) { color: var(--text); border-color: var(--border); background: rgba(255, 255, 255, .04); transform: none; }
+.drag-handle:active { cursor: grabbing; }
+.is-reordering, .is-reordering * { cursor: grabbing !important; }
 .entry-main { min-width: 0; }
 .card-title, .card-category { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-title { font-size: 13px; font-weight: 800; }
@@ -189,8 +205,12 @@ p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .modal-header, .modal-actions { align-items: center; justify-content: space-between; gap: 10px; }
 .modal label:not(.file-button) { display: grid; gap: 6px; color: #c4d5e5; font-size: 12px; font-weight: 760; }
-.grow { flex: 1; }
-.grow textarea { min-height: 100%; }
+.grow {
+  flex: 1 1 280px;
+  min-height: 280px;
+  grid-template-rows: auto minmax(250px, 1fr);
+}
+.grow textarea { height: 100%; min-height: 0; }
 .spacer { flex: 1; }
 .push-bottom { margin-top: auto; }
 .settings-card { padding: 13px; }

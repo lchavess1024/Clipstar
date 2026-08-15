@@ -273,10 +273,13 @@ function upsertSnippet(store, payload, idFactory, now) {
   }
   const existing = requestedId ? store.snippets.find((snippet) => snippet.id === requestedId) : null;
   if (existing) {
+    const position = existing.folderId === folderId
+      ? existing.position
+      : nextSnippetPosition(store.snippets, folderId, existing.id);
     return {
       ...store,
       snippets: store.snippets.map((snippet) => snippet.id === existing.id
-        ? { ...snippet, title, body, folderId, updatedAt: now }
+        ? { ...snippet, title, body, folderId, position, updatedAt: now }
         : snippet)
     };
   }
@@ -291,7 +294,7 @@ function upsertSnippet(store, payload, idFactory, now) {
       title,
       folderId,
       body,
-      position: store.snippets.length,
+      position: nextSnippetPosition(store.snippets, folderId),
       createdAt: now,
       updatedAt: now
     }]
@@ -310,16 +313,68 @@ function moveSnippet(store, payload, now) {
   if (!isRecord(payload)) throw new StoreError("Move details are missing.");
   const id = asString(payload.id);
   const folderId = asString(payload.folderId);
+  const targetId = asString(payload.targetId);
+  const placement = targetId ? asString(payload.placement || "before") : "end";
   if (folderId && !store.folders.some((folder) => folder.id === folderId)) {
     throw new StoreError("The target folder no longer exists.");
   }
-  if (!store.snippets.some((snippet) => snippet.id === id)) throw new StoreError("That clip no longer exists.");
+  const movedSnippet = store.snippets.find((snippet) => snippet.id === id);
+  if (!movedSnippet) throw new StoreError("That clip no longer exists.");
+  if (targetId === id) throw new StoreError("A clip cannot be moved relative to itself.");
+  if (targetId && placement !== "before" && placement !== "after") {
+    throw new StoreError("The requested clip placement is invalid.");
+  }
+  const targetSnippet = targetId
+    ? store.snippets.find((snippet) => snippet.id === targetId)
+    : null;
+  if (targetId && (!targetSnippet || targetSnippet.folderId !== folderId)) {
+    throw new StoreError("The target clip is not in the selected folder.");
+  }
+
+  const destination = store.snippets
+    .filter((snippet) => snippet.folderId === folderId && snippet.id !== id)
+    .sort(sortSnippetRecords);
+  let insertionIndex = destination.length;
+  if (targetSnippet) {
+    insertionIndex = destination.findIndex((snippet) => snippet.id === targetSnippet.id);
+    if (placement === "after") insertionIndex += 1;
+  }
+
+  const moved = { ...movedSnippet, folderId, updatedAt: now };
+  destination.splice(insertionIndex, 0, moved);
+  const positions = new Map(
+    destination.map((snippet, index) => [snippet.id, index])
+  );
+
+  if (movedSnippet.folderId !== folderId) {
+    const source = store.snippets
+      .filter((snippet) => snippet.folderId === movedSnippet.folderId && snippet.id !== id)
+      .sort(sortSnippetRecords);
+    source.forEach((snippet, index) => positions.set(snippet.id, index));
+  }
+
   return {
     ...store,
-    snippets: store.snippets.map((snippet) => snippet.id === id
-      ? { ...snippet, folderId, updatedAt: now }
-      : snippet)
+    snippets: store.snippets.map((snippet) => {
+      const next = snippet.id === id ? moved : snippet;
+      const position = positions.get(next.id);
+      return position === undefined || next.position === position
+        ? next
+        : { ...next, position };
+    })
   };
+}
+
+function nextSnippetPosition(snippets, folderId, excludedId = "") {
+  return snippets
+    .filter((snippet) => snippet.folderId === folderId && snippet.id !== excludedId)
+    .reduce((maximum, snippet) => Math.max(maximum, finiteNumber(snippet.position, -1)), -1) + 1;
+}
+
+function sortSnippetRecords(a, b) {
+  return finiteNumber(a.position, 0) - finiteNumber(b.position, 0)
+    || String(a.title || "").localeCompare(String(b.title || ""))
+    || String(a.id || "").localeCompare(String(b.id || ""));
 }
 
 function upsertFolder(store, payload, idFactory, now) {
