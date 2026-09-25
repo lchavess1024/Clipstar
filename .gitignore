@@ -6,3 +6,5 @@ node_modules/
 *.crx
 *.pem
 *.zip
+# Defense in depth if Google's authentication action ever writes credentials.
+gha-creds-*.json

@@ -3,24 +3,134 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual runs test Google's connection without submitting a build.
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: clipstar-chrome-web-store
+  cancel-in-progress: false
 
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Verify tag and version
-        run: test "v$(node -p \"require('./package.json').version\")" = "$GITHUB_REF_NAME"
+        id: version
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          if (!/^\d+\.\d+\.\d+$/.test(version) || process.env.GITHUB_REF_NAME !== `v${version}`) {
+            throw new Error('The tag must be v<package version>, without prerelease suffixes.');
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+          NODE
+          git merge-base --is-ancestor HEAD origin/main
       - run: npm run verify
+      - name: Keep the verified package for store submission
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: clipstar-store-package
+          path: |
+            release/clipstar-v${{ steps.version.outputs.version }}.zip
+            release/clipstar-v${{ steps.version.outputs.version }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            existing_assets=$(mktemp -d)
+            gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --pattern "clipstar-v${RELEASE_VERSION}.zip*" --dir "$existing_assets"
+            cmp "release/clipstar-v${RELEASE_VERSION}.zip" "$existing_assets/clipstar-v${RELEASE_VERSION}.zip"
+            cmp "release/clipstar-v${RELEASE_VERSION}.zip.sha256" "$existing_assets/clipstar-v${RELEASE_VERSION}.zip.sha256"
+            echo 'Existing GitHub release assets match the verified package.'
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "release/clipstar-v${RELEASE_VERSION}.zip" \
+              "release/clipstar-v${RELEASE_VERSION}.zip.sha256" \
+              --verify-tag --generate-notes
+          fi
+
+  chrome-web-store:
+    needs: release
+    if: >-
+      always() && !cancelled() && github.repository == 'lchavess1024/Clipstar' &&
+      ((github.event_name == 'push' && needs.release.result == 'success' && vars.CWS_PUBLISH_ENABLED == 'true') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CWS_PUBLISHER_ID: bad675f9-6a41-4b7c-849f-7e15fba1be63
+      CWS_EXTENSION_ID: hbgkgbmefkghajcmngcichciohckbkgj
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Check publishing configuration
+        env:
+          PROVIDER: ${{ vars.CWS_WORKLOAD_IDENTITY_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ vars.CWS_SERVICE_ACCOUNT }}
+        run: |
+          if [[ -z "$PROVIDER" || -z "$SERVICE_ACCOUNT" ]]; then
+            echo 'Configure CWS_WORKLOAD_IDENTITY_PROVIDER and CWS_SERVICE_ACCOUNT first. See docs/CHROME_WEB_STORE_AUTOMATION.md.' >&2
+            exit 1
+          fi
+      - name: Download this run's verified package
+        if: github.event_name == 'push'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: clipstar-store-package
+          path: release
+      - name: Get a short-lived Google publishing token
+        id: google
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.CWS_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.CWS_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Test connection without uploading or publishing
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
+        run: node scripts/publish-chrome-web-store.mjs --check-auth
+      - name: Upload and submit for Chrome Web Store review
+        if: github.event_name == 'push'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          node scripts/publish-chrome-web-store.mjs \
+            --version "$RELEASE_VERSION" \
+            --zip "release/clipstar-v${RELEASE_VERSION}.zip"

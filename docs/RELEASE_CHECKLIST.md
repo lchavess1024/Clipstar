@@ -26,4 +26,8 @@
 - [ ] `PRIVACY.md`, listing disclosures, screenshots, and permission explanations match the release.
 - [ ] No secrets, `.pem`, `.crx`, user backups, browser profiles, or development files are included.
 - [ ] Private vulnerability reporting is enabled on GitHub.
-- [ ] Tag `v<version>`; the release workflow publishes the ZIP and checksum.
+- [ ] Complete [Chrome Web Store automation setup](CHROME_WEB_STORE_AUTOMATION.md) and its read-only connection test.
+- [ ] Increase the version in `package.json`, `package-lock.json`, and `extension/manifest.json` above the store version.
+- [ ] Commit and push to `main`, then push tag `v<version>`; the release workflow publishes the ZIP and checksum to GitHub.
+- [ ] If `CWS_PUBLISH_ENABLED=true`, confirm the Chrome submission job succeeded. `PENDING_REVIEW` means submitted, not live.
+- [ ] Confirm Google's approval and the new version in the store dashboard before announcing availability.

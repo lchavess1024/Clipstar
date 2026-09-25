@@ -65,6 +65,8 @@ See [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), and [docs/ARCHITECTURE
 
 Follow [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). The Chrome Web Store listing copy and permission explanations are in [docs/CHROME_WEB_STORE.md](docs/CHROME_WEB_STORE.md).
 
+The release workflow can submit a verified version tag to the existing Chrome Web Store listing. After the one-time [publishing setup](docs/CHROME_WEB_STORE_AUTOMATION.md), pushing `v<version>` builds the ZIP, creates a GitHub release, and submits it for Google's review. Ordinary pushes do not publish. Running the workflow manually only tests the Google connection. Automatic store submission remains disabled until `CWS_PUBLISH_ENABLED` is configured.
+
 ## License
 
 MIT © 2026 Luis Chaves. See [LICENSE](LICENSE).
