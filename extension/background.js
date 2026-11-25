@@ -1,4 +1,4 @@
-import { APP_NAME, STORAGE_KEY } from "./lib/constants.js";
+import { APP_NAME, LIMITS, STORAGE_KEY } from "./lib/constants.js";
 import { copyClipInPage, insertClipInPage, showClipstarToast } from "./lib/insert.js";
 import { createMutationQueue } from "./lib/mutation-queue.js";
 import { loadStore, saveStore } from "./lib/storage.js";
@@ -6,6 +6,8 @@ import { loadStore, saveStore } from "./lib/storage.js";
 const ROOT_MENU_ID = "clipstar-root";
 const OPEN_MENU_ID = "clipstar-open";
 const SEPARATOR_ID = "clipstar-separator";
+const SNIPPET_MENU_PREFIX = "snippet:";
+const PINNED_MENU_PREFIX = "pinned-snippet:";
 const mutationQueue = createMutationQueue({ load: loadStore, save: saveStore });
 let menuRebuildRequested = false;
 let activeMenuRebuild = null;
@@ -82,24 +84,20 @@ async function rebuildContextMenus() {
     contexts: ["editable"]
   });
 
+  // Chrome shares a finite command-ID range across extension context menus.
+  const pinned = store.snippets
+    .filter((snippet) => snippet.pinned === true)
+    .sort(sortByTitle)
+    .slice(0, LIMITS.menuPinCount);
+  const quickAccessIds = new Set(pinned.map((snippet) => snippet.id));
   const standalone = store.snippets
-    .filter((snippet) => !snippet.folderId)
+    .filter((snippet) => !snippet.folderId && !quickAccessIds.has(snippet.id))
     .sort(sortByPositionThenTitle);
   const rootFolders = store.folders
     .filter((folder) => !folder.parentId)
     .sort(sortByPositionThenName);
 
-  if (standalone.length || rootFolders.length) {
-    await createMenu({
-      id: SEPARATOR_ID,
-      parentId: ROOT_MENU_ID,
-      type: "separator",
-      contexts: ["editable"]
-    });
-  }
-  for (const snippet of standalone) await createSnippetMenu(snippet, ROOT_MENU_ID);
-  for (const folder of rootFolders) await createFolderMenu(folder, ROOT_MENU_ID, store);
-  if (!standalone.length && !rootFolders.length) {
+  if (!pinned.length && !standalone.length && !rootFolders.length) {
     await createMenu({
       id: "clipstar-empty",
       parentId: ROOT_MENU_ID,
@@ -107,7 +105,21 @@ async function rebuildContextMenus() {
       enabled: false,
       contexts: ["editable"]
     });
+    return;
   }
+
+  await createSeparatorMenu(SEPARATOR_ID, ROOT_MENU_ID);
+  for (const snippet of pinned) await createSnippetMenu(snippet, ROOT_MENU_ID, true);
+
+  if (pinned.length && standalone.length) {
+    await createSeparatorMenu("clipstar-standalone-separator", ROOT_MENU_ID);
+  }
+  for (const snippet of standalone) await createSnippetMenu(snippet, ROOT_MENU_ID);
+
+  if ((pinned.length || standalone.length) && rootFolders.length) {
+    await createSeparatorMenu("clipstar-folders-separator", ROOT_MENU_ID);
+  }
+  for (const folder of rootFolders) await createFolderMenu(folder, ROOT_MENU_ID, store);
 }
 
 async function createFolderMenu(folder, parentMenuId, store) {
@@ -127,6 +139,9 @@ async function createFolderMenu(folder, parentMenuId, store) {
     .sort(sortByPositionThenName);
   for (const snippet of directSnippets) await createSnippetMenu(snippet, menuId);
 
+  if (directSnippets.length && childFolders.length) {
+    await createSeparatorMenu(`separator:${folder.id}`, menuId);
+  }
   for (const child of childFolders) {
     const childMenuId = `folder:${child.id}`;
     await createMenu({
@@ -161,11 +176,17 @@ async function createFolderMenu(folder, parentMenuId, store) {
   }
 }
 
-async function createSnippetMenu(snippet, parentId) {
+async function createSeparatorMenu(id, parentId) {
+  await createMenu({ id, parentId, type: "separator", contexts: ["editable"] });
+}
+
+async function createSnippetMenu(snippet, parentId, pinned = false) {
+  const prefix = pinned ? PINNED_MENU_PREFIX : SNIPPET_MENU_PREFIX;
+  const title = pinned ? `★ ${snippet.title}` : snippet.title;
   await createMenu({
-    id: `snippet:${snippet.id}`,
+    id: `${prefix}${snippet.id}`,
     parentId,
-    title: menuTitle(snippet.title, "Untitled clip"),
+    title: menuTitle(title, "Untitled clip"),
     contexts: ["editable"]
   });
 }
@@ -174,10 +195,12 @@ async function handleMenuClick(info, tab) {
   if (!tab?.id) return;
   const menuId = String(info.menuItemId || "");
   if (menuId === OPEN_MENU_ID) return openManager();
-  if (!menuId.startsWith("snippet:")) return;
+  const prefix = menuId.startsWith(PINNED_MENU_PREFIX) ? PINNED_MENU_PREFIX : SNIPPET_MENU_PREFIX;
+  if (!menuId.startsWith(prefix)) return;
 
+  const snippetId = menuId.slice(prefix.length);
   const store = await loadStore();
-  const snippet = store.snippets.find((item) => item.id === menuId.slice("snippet:".length));
+  const snippet = store.snippets.find((item) => item.id === snippetId);
   if (!snippet) return markInsertionFailure(tab.id, "That clip no longer exists.");
   const frameId = Number.isInteger(info.frameId) ? info.frameId : 0;
 
@@ -279,8 +302,11 @@ function sortByPositionThenName(a, b) {
 }
 
 function sortByPositionThenTitle(a, b) {
-  return sortByPosition(a, b)
-    || String(a.title || "").localeCompare(String(b.title || ""))
+  return sortByPosition(a, b) || sortByTitle(a, b);
+}
+
+function sortByTitle(a, b) {
+  return String(a.title || "").localeCompare(String(b.title || ""))
     || String(a.id || "").localeCompare(String(b.id || ""));
 }
 

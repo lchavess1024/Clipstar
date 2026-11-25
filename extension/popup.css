@@ -145,6 +145,8 @@ p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .folder-card.is-selected, .subfolder-card.is-selected { border-color: var(--accent-strong); box-shadow: 0 0 0 2px rgba(56, 189, 248, .12); }
 .subfolder-card { margin: 8px 0 0 12px; padding: 8px; background: rgba(8, 23, 40, .9); }
 .folder-header { align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.folder-heading { display: flex; align-items: center; min-width: 0; }
+.folder-heading .drag-handle { flex: none; }
 
 .folder-title {
   min-width: 0;
@@ -163,10 +165,10 @@ p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .folder-actions, .entry-actions { align-items: center; justify-content: flex-end; gap: 5px; }
 .folder-entries { display: grid; gap: 6px; }
 .entry-card { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; margin: 5px 0; padding: 9px 10px; }
-.entry-card.is-dragging { opacity: .52; }
+.entry-card.is-dragging, .folder-header.is-dragging { opacity: .52; }
 .drag-over { border-color: var(--success) !important; box-shadow: 0 0 0 3px rgba(134, 239, 172, .14); }
-.entry-card.drop-before { box-shadow: inset 0 3px 0 var(--success); }
-.entry-card.drop-after { box-shadow: inset 0 -3px 0 var(--success); }
+:is(.entry-card, .folder-card, .subfolder-card).drop-before { box-shadow: inset 0 3px 0 var(--success); }
+:is(.entry-card, .folder-card, .subfolder-card).drop-after { box-shadow: inset 0 -3px 0 var(--success); }
 .drag-handle {
   width: 25px;
   min-height: 34px;
@@ -264,6 +266,11 @@ p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .toast.error { color: #fff7ed; background: var(--danger-hover); }
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+
+.pin-clip[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--border-strong);
+}
 
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(4px) scale(.99); }

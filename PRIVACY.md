@@ -1,6 +1,6 @@
 # Clipstar Privacy Policy
 
-Effective: August 14, 2026
+Effective: November 24, 2026
 
 Clipstar is a local-first Chrome extension for saving reusable text clips and inserting them into text fields. This policy explains the data Clipstar handles and how it is used.
 
@@ -8,7 +8,7 @@ Clipstar is a local-first Chrome extension for saving reusable text clips and in
 
 Clipstar handles the following data only to provide its user-facing features:
 
-- **Saved content:** clip labels, clip bodies, folder names, folder relationships, ordering, and creation/update timestamps that you create or import.
+- **Saved content:** clip labels, clip bodies, clip pins, folder names, folder relationships, ordering, and creation/update timestamps that you create or import.
 - **Focused field information:** after you select a Clipstar right-click menu item, Clipstar temporarily examines the focused editable element in that exact page frame. It uses the element's value, selection position, and limited field attributes such as its ID, name, label, and placeholder to insert at the cursor and support ServiceNow journal fields.
 - **Clipboard data:** when you press Copy, or when a field cannot accept an insertion, Clipstar writes the selected clip to the system clipboard. Clipstar does not read or retain clipboard history.
 - **Backup files:** exported JSON contains your full saved clips and folders. Imported JSON is read locally and merged into Chrome storage after validation.

@@ -6,8 +6,8 @@ Security fixes are provided for the latest Clipstar release on the `main` branch
 
 | Version | Supported |
 | --- | --- |
-| 1.1.x | Yes |
-| 1.0.x and older Luis Clippings builds | No |
+| 1.3.x | Yes |
+| 1.2.x and older | No |
 
 ## Reporting a vulnerability
 

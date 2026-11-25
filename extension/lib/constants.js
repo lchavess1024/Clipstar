@@ -24,6 +24,7 @@ export const LIMITS = Object.freeze({
   folderCount: 200,
   folderNameLength: 80,
   importBytes: 10 * 1024 * 1024,
+  menuPinCount: 50,
   snippetCount: 500,
   storeBytes: 8 * 1024 * 1024,
   titleLength: 120

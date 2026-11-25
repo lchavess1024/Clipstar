@@ -2,6 +2,23 @@
 
 All notable changes to Clipstar are documented here.
 
+## [1.3.0] - 2026-11-24
+
+### Added
+
+- Pin frequently used clips for quick access from the right-click menu.
+- Reorder folders and subfolders among their siblings by dragging or using the arrow keys.
+
+### Changed
+
+- Group pinned clips, standalone clips, and folders with native menu dividers.
+- Show up to 50 pins in quick access while keeping all clips available in their usual menus.
+- Save pin state and folder order in JSON backups.
+
+### Fixed
+
+- Preserve keyboard and assistive-technology focus when opening dialogs.
+
 ## [1.2.0] - 2026-08-14
 
 ### Added

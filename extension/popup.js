@@ -11,6 +11,10 @@ let activeDialog = null;
 let returnFocus = null;
 let busy = false;
 let draggedEntryId = "";
+let draggedFolder = null;
+
+const ENTRY_DRAG_TYPE = "application/x-clipstar-id";
+const FOLDER_DRAG_TYPE = "application/x-clipstar-folder-id";
 
 const byId = (id) => document.getElementById(id);
 const els = {
@@ -160,8 +164,9 @@ function renderTree() {
     nodes.push(section);
   }
 
-  for (const folder of getRootFolders()) {
-    const folderNode = renderFolder(folder, query);
+  const folders = getRootFolders();
+  for (const folder of folders) {
+    const folderNode = renderFolder(folder, query, !query && folders.length > 1);
     if (folderNode) nodes.push(folderNode);
   }
 
@@ -189,7 +194,7 @@ function makeSection(title, folderId) {
   return section;
 }
 
-function renderFolder(folder, query) {
+function renderFolder(folder, query, reorderable) {
   const folderMatches = folder.name.toLocaleLowerCase().includes(query);
   const directEntries = store.snippets
     .filter((snippet) => snippet.folderId === folder.id)
@@ -197,7 +202,7 @@ function renderFolder(folder, query) {
     .sort(sortEntries);
   const childFolders = getChildFolders(folder.id);
   const childNodes = childFolders
-    .map((child) => renderSubfolder(child, query, folderMatches))
+    .map((child) => renderSubfolder(child, query, folderMatches, !query && childFolders.length > 1))
     .filter(Boolean);
 
   if (query && !folderMatches && !directEntries.length && !childNodes.length) return null;
@@ -207,18 +212,11 @@ function renderFolder(folder, query) {
   if (selectedFolderId === folder.id) section.classList.add("is-selected");
   section.dataset.folderId = folder.id;
 
-  const header = document.createElement("div");
-  header.className = "folder-header";
-  const title = folderTitleButton(folder);
-  const actions = document.createElement("div");
-  actions.className = "folder-actions";
-  actions.append(
+  section.appendChild(makeFolderHeader(section, folder, reorderable,
     smallButton("+ Clip", `Create a clip in ${folder.name}`, () => openEntryEditor(null, folder.id)),
     smallButton("+ Folder", `Create a subfolder in ${folder.name}`, () => openFolderEditor(null, folder.id)),
     smallButton("✎", `Edit folder ${folder.name}`, () => openFolderEditor(folder), true)
-  );
-  header.append(title, actions);
-  section.appendChild(header);
+  ));
 
   const entries = document.createElement("div");
   entries.className = "folder-entries";
@@ -228,7 +226,7 @@ function renderFolder(folder, query) {
   return section;
 }
 
-function renderSubfolder(folder, query, parentMatches) {
+function renderSubfolder(folder, query, parentMatches, reorderable) {
   const folderMatches = parentMatches || folder.name.toLocaleLowerCase().includes(query);
   const entries = store.snippets
     .filter((snippet) => snippet.folderId === folder.id)
@@ -241,19 +239,38 @@ function renderSubfolder(folder, query, parentMatches) {
   if (selectedFolderId === folder.id) section.classList.add("is-selected");
   section.dataset.folderId = folder.id;
 
-  const header = document.createElement("div");
-  header.className = "folder-header";
-  const title = folderTitleButton(folder);
-  const actions = document.createElement("div");
-  actions.className = "folder-actions";
-  actions.append(
+  section.appendChild(makeFolderHeader(section, folder, reorderable,
     smallButton("+ Clip", `Create a clip in ${folder.name}`, () => openEntryEditor(null, folder.id)),
     smallButton("✎", `Edit folder ${folder.name}`, () => openFolderEditor(folder), true)
-  );
-  header.append(title, actions);
-  section.appendChild(header);
+  ));
   for (const snippet of entries) section.appendChild(renderEntry(snippet));
   return section;
+}
+
+function makeFolderHeader(section, folder, reorderable, ...buttons) {
+  const header = document.createElement("div");
+  header.className = "folder-header";
+  const heading = document.createElement("div");
+  heading.className = "folder-heading";
+  const actions = document.createElement("div");
+  actions.className = "folder-actions";
+  actions.append(...buttons);
+
+  if (reorderable) {
+    const handle = makeReorderHandle(`folder ${folder.name}`, "folderReorderInstructions");
+    handle.addEventListener("dragstart", (event) => {
+      if (!event.dataTransfer) return;
+      draggedFolder = folder;
+      startReorderDrag(event, header, FOLDER_DRAG_TYPE, folder.id);
+    });
+    handle.addEventListener("keydown", (event) => handleFolderOrderKeydown(event, folder));
+    heading.appendChild(handle);
+    addFolderDropHandlers(header, section, folder);
+  }
+
+  heading.appendChild(folderTitleButton(folder));
+  header.append(heading, actions);
+  return header;
 }
 
 function folderTitleButton(folder) {
@@ -276,17 +293,9 @@ function renderEntry(snippet) {
   item.dataset.entryId = snippet.id;
   item.dataset.folderId = snippet.folderId;
 
-  const dragHandle = document.createElement("button");
-  dragHandle.className = "drag-handle";
-  dragHandle.type = "button";
-  dragHandle.draggable = true;
-  dragHandle.textContent = "⋮⋮";
-  dragHandle.setAttribute("aria-label", `Reorder ${snippet.title}`);
-  dragHandle.setAttribute("aria-describedby", "reorderInstructions");
-  dragHandle.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown");
+  const dragHandle = makeReorderHandle(snippet.title, "reorderInstructions");
   dragHandle.title = `Drag to move ${snippet.title}, or use the arrow keys to reorder it`;
   dragHandle.addEventListener("dragstart", (event) => startEntryDrag(event, item, snippet.id));
-  dragHandle.addEventListener("dragend", clearDragState);
   dragHandle.addEventListener("keydown", (event) => handleEntryOrderKeydown(event, snippet));
 
   item.addEventListener("dragover", (event) => {
@@ -330,12 +339,64 @@ function renderEntry(snippet) {
 
   const actions = document.createElement("div");
   actions.className = "entry-actions";
+  const pinned = snippet.pinned === true;
+  const pinButton = smallButton(
+    pinned ? "★" : "☆",
+    `Pin ${snippet.title} to the right-click menu`,
+    () => updateClipPin(snippet, pinButton),
+    true
+  );
+  pinButton.classList.add("pin-clip");
+  pinButton.setAttribute("aria-pressed", String(pinned));
+  pinButton.title = pinned ? "Unpin from the right-click menu" : "Pin to the right-click menu";
   actions.append(
     smallButton("Copy", `Copy ${snippet.title}`, () => copyToClipboard(snippet.body), false, "primary"),
+    pinButton,
     smallButton("✎", `Edit clip ${snippet.title}`, () => openEntryEditor(snippet), true)
   );
   item.append(dragHandle, main, actions);
   return item;
+}
+
+function makeReorderHandle(label, instructionsId) {
+  const handle = document.createElement("button");
+  handle.className = "drag-handle";
+  handle.type = "button";
+  handle.draggable = true;
+  handle.textContent = "⋮⋮";
+  handle.setAttribute("aria-label", `Reorder ${label}`);
+  handle.setAttribute("aria-describedby", instructionsId);
+  handle.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown");
+  handle.title = `Drag to reorder ${label}, or use the arrow keys`;
+  handle.addEventListener("dragend", clearDragState);
+  return handle;
+}
+
+function addFolderDropHandlers(header, section, folder) {
+  function canDropFolder() {
+    return draggedFolder && draggedFolder.id !== folder.id && draggedFolder.parentId === folder.parentId;
+  }
+
+  header.addEventListener("dragover", (event) => {
+    if (!canDropFolder()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearDropIndicators();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    section.classList.add(dropPlacement(event, header) === "before" ? "drop-before" : "drop-after");
+  });
+  header.addEventListener("dragleave", (event) => {
+    if (!header.contains(event.relatedTarget)) section.classList.remove("drop-before", "drop-after");
+  });
+  header.addEventListener("drop", async (event) => {
+    if (!canDropFolder()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = draggedFolder.id;
+    const placement = dropPlacement(event, header);
+    clearDragState();
+    await moveFolder(id, folder.id, placement);
+  });
 }
 
 function addDropHandlersToZones() {
@@ -372,7 +433,11 @@ function addDropHandlersToZones() {
 function startEntryDrag(event, item, id) {
   if (!event.dataTransfer) return;
   draggedEntryId = id;
-  event.dataTransfer.setData("application/x-clipstar-id", id);
+  startReorderDrag(event, item, ENTRY_DRAG_TYPE, id);
+}
+
+function startReorderDrag(event, item, type, id) {
+  event.dataTransfer.setData(type, id);
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setDragImage(item, 18, 18);
   item.classList.add("is-dragging");
@@ -382,12 +447,12 @@ function startEntryDrag(event, item, id) {
 function isEntryDrag(event) {
   return Boolean(
     draggedEntryId
-    || Array.from(event.dataTransfer?.types || []).includes("application/x-clipstar-id")
+    || Array.from(event.dataTransfer?.types || []).includes(ENTRY_DRAG_TYPE)
   );
 }
 
 function getDraggedEntryId(event) {
-  return event.dataTransfer?.getData("application/x-clipstar-id") || draggedEntryId;
+  return event.dataTransfer?.getData(ENTRY_DRAG_TYPE) || draggedEntryId;
 }
 
 function dropPlacement(event, item) {
@@ -408,6 +473,30 @@ function clearDragState() {
   }
   document.body.classList.remove("is-reordering");
   draggedEntryId = "";
+  draggedFolder = null;
+}
+
+async function handleFolderOrderKeydown(event, folder) {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  event.preventDefault();
+  event.stopPropagation();
+  const siblings = getChildFolders(folder.parentId);
+  const currentIndex = siblings.findIndex((item) => item.id === folder.id);
+  const direction = event.key === "ArrowUp" ? -1 : 1;
+  const target = siblings[currentIndex + direction];
+  if (!target) {
+    showToast(direction < 0 ? "This folder is already first." : "This folder is already last.");
+    return;
+  }
+
+  await moveFolder(folder.id, target.id, direction < 0 ? "before" : "after");
+}
+
+async function moveFolder(id, targetId, placement) {
+  const updated = await commitMutation("moveFolder", { id, targetId, placement });
+  const handle = els.treeView.querySelector(`[data-folder-id="${id}"] > .folder-header .drag-handle`);
+  handle?.focus();
+  if (updated) showToast("Folder reordered.");
 }
 
 async function handleEntryOrderKeydown(event, snippet) {
@@ -603,12 +692,27 @@ async function copyToClipboard(text) {
   }
 }
 
+async function updateClipPin(snippet, button) {
+  const pinned = snippet.pinned !== true;
+  const restoreFocus = document.activeElement === button;
+  const updated = await commitMutation("setSnippetPinned", { id: snippet.id, pinned });
+  if (restoreFocus) {
+    const selector = `[data-entry-id="${CSS.escape(snippet.id)}"] .pin-clip`;
+    els.treeView.querySelector(selector)?.focus();
+  }
+  if (!updated) return;
+  if (pinned && store.snippets.filter((clip) => clip.pinned === true).length > LIMITS.menuPinCount) {
+    showToast(`Clip pinned. The menu shows the first ${LIMITS.menuPinCount} pins alphabetically.`);
+    return;
+  }
+  showToast(pinned ? "Clip pinned to the right-click menu." : "Clip unpinned.");
+}
+
 function openDialog(dialog, initialFocus) {
   if (activeDialog && activeDialog !== dialog) closeDialog(activeDialog, false);
   returnFocus = document.activeElement;
   activeDialog = dialog;
   els.appShell.inert = true;
-  els.appShell.setAttribute("aria-hidden", "true");
   dialog.classList.remove("hidden");
   dialog.setAttribute("aria-hidden", "false");
   setTimeout(() => (initialFocus || dialog).focus(), 0);
@@ -620,7 +724,6 @@ function closeDialog(dialog, restoreFocus = true) {
   dialog.setAttribute("aria-hidden", "true");
   if (activeDialog === dialog) activeDialog = null;
   els.appShell.inert = false;
-  els.appShell.removeAttribute("aria-hidden");
   if (restoreFocus && returnFocus?.isConnected) returnFocus.focus();
   returnFocus = null;
 }

@@ -299,6 +299,98 @@ test("folder deletion moves affected clips to standalone", () => {
   assert.ok(next.snippets.every((snippet) => snippet.folderId === ""));
 });
 
+test("moveFolder reorders only sibling folders and survives export and reload", () => {
+  const initial = cleanStore({
+    folders: [
+      { id: "alpha", name: "Alpha", position: 4 },
+      { id: "bravo", name: "Bravo", position: 8 },
+      { id: "first", name: "First", parentId: "alpha", position: 3 },
+      { id: "second", name: "Second", parentId: "alpha", position: 6 }
+    ],
+    snippets: []
+  });
+
+  const move = (store, id, targetId, placement) => applyMutation(store, {
+    kind: "moveFolder",
+    payload: { id, targetId, placement }
+  });
+  const rootsMoved = move(initial, "bravo", "alpha", "before");
+  const childrenMoved = move(rootsMoved, "first", "second", "after");
+  const restored = parseImportPayload(JSON.parse(JSON.stringify(makeExportPayload(childrenMoved))));
+
+  assert.deepEqual(folderIdsInParent(rootsMoved, ""), ["bravo", "alpha"]);
+  assert.deepEqual(
+    rootsMoved.folders.filter((folder) => folder.parentId === "alpha"),
+    initial.folders.filter((folder) => folder.parentId === "alpha")
+  );
+  assert.deepEqual(folderIdsInParent(restored, ""), ["bravo", "alpha"]);
+  assert.deepEqual(folderIdsInParent(restored, "alpha"), ["second", "first"]);
+  assert.throws(() => move(initial, "alpha", "first", "before"), StoreError);
+  assert.throws(() => move(initial, "alpha", "missing", "before"), StoreError);
+  assert.throws(() => move(initial, "alpha", "alpha", "before"), StoreError);
+  assert.throws(() => move(initial, "alpha", "bravo", "end"), StoreError);
+});
+
+test("creating and reparenting folders appends them to their sibling group", () => {
+  const initial = cleanStore({
+    folders: [
+      { id: "first", name: "First", position: 30 },
+      { id: "second", name: "Second", position: 80 },
+      { id: "child", name: "Child", parentId: "first", position: 20 }
+    ],
+    snippets: []
+  });
+  const created = applyMutation(
+    initial, { kind: "upsertFolder", payload: { name: "New" } },
+    { idFactory: sequence("new-folder") }
+  );
+  const reparented = applyMutation(created, {
+    kind: "upsertFolder",
+    payload: { id: "second", name: "Second", parentId: "first" }
+  });
+  const renamed = applyMutation(reparented, {
+    kind: "upsertFolder",
+    payload: { id: "child", name: "Revised", parentId: "first" }
+  });
+
+  assert.deepEqual(folderIdsInParent(created, ""), ["first", "second", "new-folder"]);
+  assert.deepEqual(folderIdsInParent(renamed, ""), ["first", "new-folder"]);
+  assert.deepEqual(folderIdsInParent(renamed, "first"), ["child", "second"]);
+  assert.equal(renamed.folders.find((folder) => folder.id === "child").position, 20);
+});
+
+test("pinning survives clip edits, moves, folder deletion, and backup merges", () => {
+  const initial = cleanStore({
+    folders: [{ id: "folder", name: "Folder" }],
+    snippets: [{ id: "clip", title: "Clip", body: "Text" }]
+  });
+  const pin = (store, id, pinned) => applyMutation(store, {
+    kind: "setSnippetPinned",
+    payload: { id, pinned }
+  });
+  const pinned = pin(initial, "clip", true);
+  const edited = applyMutation(pinned, {
+    kind: "upsertSnippet",
+    payload: { id: "clip", title: "Revised", body: "Updated text" }
+  });
+  const moved = applyMutation(edited, {
+    kind: "moveSnippet",
+    payload: { id: "clip", folderId: "folder" }
+  });
+  const orphaned = applyMutation(moved, { kind: "deleteFolder", payload: { id: "folder" } });
+  const restored = parseImportPayload(JSON.parse(JSON.stringify(makeExportPayload(orphaned))));
+  const merged = mergeStores(initial, restored, { idFactory: sequence("imported") });
+
+  assert.equal(merged.snippets[0].pinned, undefined);
+  assert.equal(merged.snippets[1].pinned, true);
+  assert.equal(merged.snippets[1].title, "Revised");
+  assert.equal(merged.snippets[1].folderId, "");
+  assert.equal(merged.snippets[1].id, "imported");
+  assert.equal(Object.hasOwn(pin(merged, "imported", false).snippets[1], "pinned"), false);
+  assert.throws(() => pin(initial, "missing", true), StoreError);
+  assert.throws(() => pin(initial, "clip", "yes"), StoreError);
+});
+
 test("rejects malformed imports and incomplete clips", () => {
   assert.throws(() => parseImportPayload({ hello: "world" }), StoreError);
   assert.throws(
@@ -367,4 +459,11 @@ function snippetIdsInFolder(store, folderId) {
 
 function snippetPositionsInFolder(store, folderId) {
   return snippetsInFolder(store, folderId).map((snippet) => snippet.position);
+}
+
+function folderIdsInParent(store, parentId) {
+  return store.folders
+    .filter((folder) => folder.parentId === parentId)
+    .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
+    .map((folder) => folder.id);
 }

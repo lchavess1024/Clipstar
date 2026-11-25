@@ -85,7 +85,8 @@ export function cleanStore(value, options = {}) {
         body: asString(snippet.body).slice(0, LIMITS.bodyLength),
         position: finiteNumber(snippet.position, index),
         createdAt: validTimestamp(snippet.createdAt, now),
-        updatedAt: validTimestamp(snippet.updatedAt, now)
+        updatedAt: validTimestamp(snippet.updatedAt, now),
+        ...(snippet.pinned === true ? { pinned: true } : {})
       };
     });
 
@@ -214,8 +215,14 @@ export function applyMutation(value, mutation, options = {}) {
     case "moveSnippet":
       next = moveSnippet(store, mutation.payload, now);
       break;
+    case "setSnippetPinned":
+      next = setSnippetPinned(store, mutation.payload, now);
+      break;
     case "upsertFolder":
       next = upsertFolder(store, mutation.payload, idFactory, now);
+      break;
+    case "moveFolder":
+      next = moveFolder(store, mutation.payload, now);
       break;
     case "deleteFolder":
       next = deleteFolder(store, mutation.payload, now);
@@ -309,6 +316,26 @@ function deleteSnippet(store, payload) {
   return { ...store, snippets: store.snippets.filter((snippet) => snippet.id !== id) };
 }
 
+function setSnippetPinned(store, payload, now) {
+  if (!isRecord(payload) || typeof payload.pinned !== "boolean") {
+    throw new StoreError("A clip needs a valid pin state.");
+  }
+  const id = asString(payload.id);
+  if (!store.snippets.some((snippet) => snippet.id === id)) {
+    throw new StoreError("That clip no longer exists.");
+  }
+  return {
+    ...store,
+    snippets: store.snippets.map((snippet) => {
+      if (snippet.id !== id) return snippet;
+      const updated = { ...snippet, updatedAt: now };
+      if (payload.pinned) updated.pinned = true;
+      else delete updated.pinned;
+      return updated;
+    })
+  };
+}
+
 function moveSnippet(store, payload, now) {
   if (!isRecord(payload)) throw new StoreError("Move details are missing.");
   const id = asString(payload.id);
@@ -366,9 +393,11 @@ function moveSnippet(store, payload, now) {
 }
 
 function nextSnippetPosition(snippets, folderId, excludedId = "") {
-  return snippets
-    .filter((snippet) => snippet.folderId === folderId && snippet.id !== excludedId)
-    .reduce((maximum, snippet) => Math.max(maximum, finiteNumber(snippet.position, -1)), -1) + 1;
+  return nextPosition(snippets.filter((snippet) => snippet.folderId === folderId && snippet.id !== excludedId));
+}
+
+function nextPosition(items) {
+  return items.reduce((maximum, item) => Math.max(maximum, finiteNumber(item.position, -1)), -1) + 1;
 }
 
 function sortSnippetRecords(a, b) {
@@ -396,10 +425,13 @@ function upsertFolder(store, payload, idFactory, now) {
     if (parentId && store.folders.some((folder) => folder.parentId === existing.id)) {
       throw new StoreError("A folder with subfolders cannot become a subfolder.");
     }
+    const position = existing.parentId === parentId
+      ? existing.position
+      : nextPosition(store.folders.filter((folder) => folder.parentId === parentId));
     return {
       ...store,
       folders: store.folders.map((folder) => folder.id === existing.id
-        ? { ...folder, name, parentId, updatedAt: now }
+        ? { ...folder, name, parentId, position, updatedAt: now }
         : folder)
     };
   }
@@ -413,10 +445,43 @@ function upsertFolder(store, payload, idFactory, now) {
       id: uniqueId("", usedIds, idFactory),
       name,
       parentId,
-      position: store.folders.length,
+      position: nextPosition(store.folders.filter((folder) => folder.parentId === parentId)),
       createdAt: now,
       updatedAt: now
     }]
+  };
+}
+
+function moveFolder(store, payload, now) {
+  if (!isRecord(payload)) throw new StoreError("Move details are missing.");
+  const id = asString(payload.id);
+  const targetId = asString(payload.targetId);
+  const { placement } = payload;
+  const moved = store.folders.find((folder) => folder.id === id);
+  if (!moved) throw new StoreError("That folder no longer exists.");
+  if (targetId === id) throw new StoreError("A folder cannot be moved relative to itself.");
+  if (placement !== "before" && placement !== "after") {
+    throw new StoreError("The requested folder placement is invalid.");
+  }
+  const target = store.folders.find((folder) => folder.id === targetId);
+  if (!target || target.parentId !== moved.parentId) {
+    throw new StoreError("Folders can only be reordered under the same parent.");
+  }
+
+  const siblings = store.folders
+    .filter((folder) => folder.parentId === moved.parentId && folder.id !== id)
+    .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+  const targetIndex = siblings.indexOf(target);
+  siblings.splice(placement === "after" ? targetIndex + 1 : targetIndex, 0, moved);
+  const positions = new Map(siblings.map((folder, index) => [folder.id, index]));
+
+  return {
+    ...store,
+    folders: store.folders.map((folder) => {
+      const position = positions.get(folder.id);
+      if (folder.id === id) return { ...folder, position, updatedAt: now };
+      return position === undefined || position === folder.position ? folder : { ...folder, position };
+    })
   };
 }
 
